@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Копейка — учёт финансов</title>
+
+  <!-- Настройки для установки на телефон -->
+  <meta name="theme-color" content="#f4f5fb" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f0f17" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Копейка">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-180.png">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+
+    <!-- ===== Экран «Обзор» ===== -->
+    <section id="screen-home" class="screen">
+      <header class="top">
+        <div>
+          <p class="muted cap" id="todayLabel"></p>
+          <h1>Копейка</h1>
+        </div>
+        <button class="icon-btn" id="settingsBtn" aria-label="Настройки">⚙️</button>
+      </header>
+
+      <div class="balance-card">
+        <p class="balance-label">Общий баланс</p>
+        <h2 id="balance">0 ₽</h2>
+        <div class="balance-row">
+          <div class="pill-stat"><span>↑ Доходы за месяц</span><strong id="monthIncome">0 ₽</strong></div>
+          <div class="pill-stat"><span>↓ Расходы за месяц</span><strong id="monthExpense">0 ₽</strong></div>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <h3>Ближайшие платежи</h3>
+        <button class="link-btn" data-go="calendar">Все</button>
+      </div>
+      <div id="upcomingList" class="list"></div>
+
+      <div class="section-head">
+        <h3>Копилки</h3>
+        <button class="add-small" id="addGoalBtn">+ Цель</button>
+      </div>
+      <div id="goalsList" class="list"></div>
+
+      <div class="section-head">
+        <h3>Последние операции</h3>
+        <button class="link-btn" data-go="history">Все</button>
+      </div>
+      <div id="recentList" class="list"></div>
+    </section>
+
+    <!-- ===== Экран «История» ===== -->
+    <section id="screen-history" class="screen" hidden>
+      <header class="top"><h1>История</h1></header>
+
+      <input id="search" class="field" type="search" placeholder="🔍 Поиск по названию или категории">
+      <select id="monthFilter" class="field"></select>
+
+      <div class="segmented" id="historyFilter">
+        <button class="active" data-filter="all">Все</button>
+        <button data-filter="expense">Расходы</button>
+        <button data-filter="income">Доходы</button>
+      </div>
+
+      <p id="historySummary" class="muted"></p>
+      <div id="historyList"></div>
+    </section>
+
+    <!-- ===== Экран «Аналитика» ===== -->
+    <section id="screen-stats" class="screen" hidden>
+      <header class="top"><h1>Аналитика</h1></header>
+
+      <div class="card">
+        <div class="cal-head">
+          <button class="icon-btn" id="statsPrev" aria-label="Предыдущий месяц">‹</button>
+          <strong id="statsMonthTitle"></strong>
+          <button class="icon-btn" id="statsNext" aria-label="Следующий месяц">›</button>
+        </div>
+
+        <h3>Расходы по категориям</h3>
+        <p id="compareLine" class="compare"></p>
+
+        <div class="donut-wrap">
+          <svg id="donut" viewBox="0 0 120 120"></svg>
+          <div class="donut-center">
+            <small>Всего</small>
+            <strong id="donutTotal">0 ₽</strong>
+          </div>
+        </div>
+        <div id="categoryLegend"></div>
+      </div>
+
+      <div class="card">
+        <h3>Доходы и расходы за 6 месяцев</h3>
+        <div id="barChart" class="bars"></div>
+        <div class="bars-legend">
+          <span><i class="inc"></i>Доходы</span>
+          <span><i class="exp"></i>Расходы</span>
+        </div>
+      </div>
+
+      <div class="section-head">
+        <h3>Бюджеты на месяц</h3>
+        <button class="add-small" id="addBudgetBtn">+ Бюджет</button>
+      </div>
+      <div id="budgetsList" class="list"></div>
+    </section>
+
+    <!-- ===== Экран «Календарь» ===== -->
+    <section id="screen-calendar" class="screen" hidden>
+      <header class="top">
+        <h1>Календарь</h1>
+        <button class="add-small" id="addEventBtn">+ Событие</button>
+      </header>
+
+      <div class="card">
+        <div class="cal-head">
+          <button class="icon-btn" id="prevMonth" aria-label="Предыдущий месяц">‹</button>
+          <strong id="monthTitle"></strong>
+          <button class="icon-btn" id="nextMonth" aria-label="Следующий месяц">›</button>
+        </div>
+        <div class="cal-grid cal-weekdays">
+          <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
+
+      <div class="section-head"><h3 id="eventsTitle">События месяца</h3></div>
+      <div id="eventsList" class="list"></div>
+    </section>
+  </main>
+
+  <!-- Кнопка «+» -->
+  <button class="fab" id="addTxBtn" aria-label="Добавить операцию">+</button>
+
+  <!-- Нижнее меню -->
+  <nav class="tabbar">
+    <button class="tab active" data-tab="home"><span>🏠</span>Обзор</button>
+    <button class="tab" data-tab="history"><span>📋</span>История</button>
+    <button class="tab" data-tab="stats"><span>📊</span>Аналитика</button>
+    <button class="tab" data-tab="calendar"><span>📅</span>Календарь</button>
+  </nav>
+
+  <!-- Окно: операция (новая или редактирование) -->
+  <div class="overlay" id="txSheet" hidden>
+    <form class="sheet" id="txForm">
+      <div class="sheet-handle"></div>
+      <h3 id="txSheetTitle">Новая операция</h3>
+      <div class="segmented">
+        <label><input type="radio" name="type" value="expense" checked><span>Расход</span></label>
+        <label><input type="radio" name="type" value="income"><span>Доход</span></label>
+      </div>
+      <input id="title" type="text" placeholder="Название, например «Продукты»" required>
+      <input id="amount" type="number" inputmode="decimal" placeholder="Сумма, ₽" min="0.01" step="0.01" required>
+      <select id="category"></select>
+      <input id="date" type="date" required>
+      <div class="sheet-actions">
+        <button type="button" class="btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn-primary" id="txSubmit">Добавить</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Окно: событие календаря -->
+  <div class="overlay" id="eventSheet" hidden>
+    <form class="sheet" id="eventForm">
+      <div class="sheet-handle"></div>
+      <h3>Новое событие</h3>
+      <div class="segmented">
+        <label><input type="radio" name="eventType" value="expense" checked><span>Платёж</span></label>
+        <label><input type="radio" name="eventType" value="income"><span>Поступление</span></label>
+      </div>
+      <input id="eventTitle" type="text" placeholder="Например, «Квартплата» или «Зарплата»" required>
+      <input id="eventAmount" type="number" inputmode="decimal" placeholder="Сумма, ₽ (необязательно)" min="0.01" step="0.01">
+      <label class="field-label">Дата
+        <input id="eventDate" type="date" required>
+      </label>
+      <label class="field-label">Повтор
+        <select id="eventRepeat">
+          <option value="monthly">Каждый месяц</option>
+          <option value="yearly">Каждый год</option>
+          <option value="once">Один раз</option>
+        </select>
+      </label>
+      <div class="sheet-actions">
+        <button type="button" class="btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Окно: бюджет -->
+  <div class="overlay" id="budgetSheet" hidden>
+    <form class="sheet" id="budgetForm">
+      <div class="sheet-handle"></div>
+      <h3>Бюджет на месяц</h3>
+      <label class="field-label">Категория
+        <select id="budgetCategory"></select>
+      </label>
+      <input id="budgetLimit" type="number" inputmode="decimal" placeholder="Лимит в месяц, ₽" min="1" step="1" required>
+      <div class="sheet-actions">
+        <button type="button" class="btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Окно: копилка -->
+  <div class="overlay" id="goalSheet" hidden>
+    <form class="sheet" id="goalForm">
+      <div class="sheet-handle"></div>
+      <h3>Новая копилка</h3>
+      <input id="goalTitle" type="text" placeholder="На что копим? Например, «Отпуск»" required>
+      <input id="goalTarget" type="number" inputmode="decimal" placeholder="Сколько нужно, ₽" min="1" step="1" required>
+      <input id="goalSaved" type="number" inputmode="decimal" placeholder="Уже отложено, ₽ (необязательно)" min="0" step="1">
+      <div class="sheet-actions">
+        <button type="button" class="btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn-primary">Создать</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Окно: настройки -->
+  <div class="overlay" id="settingsSheet" hidden>
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <h3>Настройки</h3>
+
+      <div class="settings-group">
+        <p class="group-title">Импорт выписки</p>
+        <p class="muted">Загрузите выписку из банка в CSV, и операции добавятся сами.</p>
+        <label class="import-btn">
+          📥 Выбрать CSV-файл
+          <input id="importFile" type="file" accept=".csv,text/csv" class="visually-hidden">
+        </label>
+        <p id="importMessage" class="message"></p>
+      </div>
+
+      <div class="settings-group">
+        <p class="group-title">Резервная копия</p>
+        <p class="muted">Данные хранятся только на этом устройстве. Сохраняйте копию, чтобы ничего не потерять.</p>
+        <button type="button" class="btn-secondary wide" id="backupBtn">💾 Сохранить копию</button>
+        <label class="btn-secondary wide">
+          📂 Восстановить из копии
+          <input id="restoreFile" type="file" accept=".json,application/json" class="visually-hidden">
+        </label>
+        <p id="backupMessage" class="message"></p>
+      </div>
+
+      <div class="settings-group">
+        <p class="group-title">Данные</p>
+        <button type="button" class="btn-secondary wide" id="demoBtn">✨ Заполнить примерами</button>
+        <button type="button" class="btn-danger wide" id="clearBtn">🗑 Удалить все данные</button>
+      </div>
+
+      <button type="button" class="btn-primary" data-close>Готово</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
