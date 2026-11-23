@@ -1,4 +1,4 @@
-const CACHE = 'kopeyka-v4';
+const CACHE = 'kopeyka-v6';
 const FILES = [
   './',
   './index.html',

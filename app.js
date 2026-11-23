@@ -138,7 +138,7 @@ const CATEGORY_KEYWORDS = {
   'Еда': ['пятерочка', 'перекресток', 'магнит', 'лента', 'ашан', 'вкусвилл', 'дикси',
     'азбука', 'супермаркет', 'продукт', 'кафе', 'ресторан', 'кофе', 'макдон', 'вкусно',
     'kfc', 'бургер', 'пицц', 'самокат', 'лавка', 'фастфуд'],
-  'Транспорт': ['такси', 'taxi', 'метро', 'транспорт', 'азс', 'лукойл', 'роснефть',
+  'Транспорт': ['такси', 'taxi', 'yandex go', 'метро', 'транспорт', 'азс', 'лукойл', 'роснефть',
     'газпромнефть', 'бензин', 'топливо', 'парковк', 'каршеринг', 'делимобиль', 'ржд', 'аэрофлот'],
   'Дом': ['жкх', 'коммунал', 'квартплат', 'аренд', 'электроэнерг', 'интернет', 'связь', 'мтс',
     'билайн', 'мегафон', 'теле2', 'ростелеком', 'леруа', 'хозтовар'],
@@ -1021,8 +1021,7 @@ function fillDemo() {
   }
 
   // События календаря на текущий месяц
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const dayOfMonth = (day) => toISO(new Date(monthStart.getFullYear(), monthStart.getMonth(), day));
+  const dayOfMonth = (day) => toISO(new Date(now.getFullYear(), now.getMonth(), day));
   const paidIfPassed = (day) => (now.getDate() >= day ? { [monthKey(today())]: true } : {});
 
   events.push(
@@ -1077,7 +1076,7 @@ $('clearBtn').onclick = () => {
   $('settingsSheet').hidden = true;
 };
 
-// ===== 15. Импорт выписки =====
+// ===== 15. Импорт CSV-выписки =====
 
 // Читаем файл: пробуем UTF-8, если текст «сломан» — русскую кодировку Windows
 async function readFileText(file) {
@@ -1242,14 +1241,170 @@ async function importStatement(file) {
   showMessage('importMessage', message, added === 0 && duplicates === 0);
 }
 
+// ===== 15.1 Импорт PDF-выписки =====
+const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('pdfjs-load'));
+    document.head.appendChild(script);
+  });
+}
+
+// Загружаем pdf.js только когда она нужна.
+// Обработчик подключаем как обычный скрипт: тогда PDF читается без отдельного
+// фонового потока, и это работает везде — на айфоне и при открытии файла с компьютера.
+async function loadPdfJs() {
+  if (!window.pdfjsLib) await loadScript(PDFJS_URL);
+  if (!window.pdfjsWorker) await loadScript(PDFJS_WORKER_URL);
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+  return window.pdfjsLib;
+}
+
+// Достаём из PDF текст и собираем его в строки (сверху вниз, слева направо)
+async function pdfToLines(file) {
+  const pdfjs = await loadPdfJs();
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  const lines = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    const rows = [];
+
+    content.items.forEach((item) => {
+      if (!item.str || !item.str.trim()) return;
+      const x = item.transform[4];
+      const y = item.transform[5];
+      // Кусочки текста на одной высоте — это одна строка
+      let row = rows.find((r) => Math.abs(r.y - y) < 3);
+      if (!row) {
+        row = { y, items: [] };
+        rows.push(row);
+      }
+      row.items.push({ x, text: item.str });
+    });
+
+    rows.sort((a, b) => b.y - a.y);
+    rows.forEach((row) => {
+      row.items.sort((a, b) => a.x - b.x);
+      lines.push(row.items.map((i) => i.text).join(' ').replace(/\s+/g, ' ').trim());
+    });
+  }
+  return lines;
+}
+
+// Суммы вида "1 245,50", "+85 000,00", "-300,00"
+const MONEY_RE = /[+\-−]?\d{1,3}(?: \d{3})*,\d{2}/g;
+
+// Находим операции в строках выписки
+function parseStatementLines(lines) {
+  const operations = [];
+  let current = null;
+
+  lines.forEach((line) => {
+    const dateMatch = line.match(/^(\d{2}\.\d{2}\.\d{4})(?:\s+\d{1,2}:\d{2})?/);
+    const amounts = line.match(MONEY_RE) || [];
+
+    if (dateMatch && amounts.length) {
+      // Основная строка: дата, время, код, категория, сумма, остаток
+      const firstAmount = amounts[0];
+      let middle = line.slice(dateMatch[0].length, line.indexOf(firstAmount)).trim();
+      middle = middle.replace(/^\d{4,}\s*/, ''); // убираем код авторизации
+      current = { date: parseDate(dateMatch[1]), raw: firstAmount, category: middle, details: '' };
+      operations.push(current);
+    } else if (current && !current.details && dateMatch && !amounts.length) {
+      // Строка под операцией: дата обработки и описание (магазин, отправитель)
+      current.details = line.slice(dateMatch[0].length).trim();
+    }
+  });
+
+  return operations.map((op) => {
+    const title = op.details
+      .replace(/Операция по (карте|счету|счёту).*$/i, '')
+      .replace(/\*{2,}\d{2,4}/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[.,;]$/, '');
+
+    return {
+      date: op.date,
+      type: op.raw.startsWith('+') ? 'income' : 'expense',
+      amount: Math.round(Math.abs(parseAmount(op.raw)) * 100) / 100,
+      title: title || op.category || 'Операция по карте',
+      bankCategory: op.category,
+    };
+  });
+}
+
+async function importPdfStatement(file) {
+  showMessage('importMessage', 'Читаю PDF…', false);
+
+  let lines;
+  try {
+    lines = await pdfToLines(file);
+  } catch (error) {
+    if (error.message === 'pdfjs-load') {
+      showMessage('importMessage', 'Для первого импорта PDF нужен интернет. Подключитесь и попробуйте снова.', true);
+    } else if (error.name === 'PasswordException') {
+      showMessage('importMessage', 'PDF защищён паролем. Скачайте выписку без пароля.', true);
+    } else {
+      showMessage('importMessage', 'Не удалось прочитать PDF: ' + (error.message || error.name), true);
+    }
+    return;
+  }
+
+  const operations = parseStatementLines(lines).filter((op) => op.date && op.amount > 0);
+  if (!operations.length) {
+    showMessage('importMessage', 'Не нашёл операций в этом PDF. Возможно, у банка другой формат выписки.', true);
+    return;
+  }
+
+  // Добавляем, пропуская дубли
+  const existing = new Set(transactions.map((t) => `${t.date}|${t.amount}|${t.title}`));
+  let added = 0;
+  let duplicates = 0;
+
+  operations.forEach((op) => {
+    const key = `${op.date}|${op.amount}|${op.title}`;
+    if (existing.has(key)) { duplicates++; return; }
+    existing.add(key);
+
+    transactions.push({
+      id: newId(),
+      type: op.type,
+      title: op.title,
+      amount: op.amount,
+      category: guessCategory(`${op.title} ${op.bankCategory}`),
+      date: op.date,
+    });
+    added++;
+  });
+
+  save();
+  renderAll();
+
+  let message = `Добавлено операций: ${added}.`;
+  if (duplicates) message += ` Уже были в приложении: ${duplicates}.`;
+  showMessage('importMessage', message, added === 0 && duplicates === 0);
+}
+
+// Выбор файла: PDF или CSV
 $('importFile').addEventListener('change', async () => {
   const input = $('importFile');
   const file = input.files[0];
   if (!file) return;
+
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
   try {
-    await importStatement(file);
+    if (isPdf) await importPdfStatement(file);
+    else await importStatement(file);
   } catch (error) {
-    showMessage('importMessage', 'Не удалось прочитать файл. Проверьте, что это CSV.', true);
+    showMessage('importMessage', 'Не удалось прочитать файл: ' + (error.message || error.name), true);
   }
   input.value = ''; // чтобы можно было выбрать тот же файл ещё раз
 });
