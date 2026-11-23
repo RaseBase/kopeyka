@@ -32,7 +32,8 @@
 
 | Обзор | Аналитика | Календарь |
 |---|---|---|
-| ![Обзор](home.png) | ![Аналитика](stats.png) | ![Календарь](calendar.png) |
+| ![Обзор](screenshots/home.png) | ![Аналитика](screenshots/stats.png) | ![Календарь](screenshots/calendar.png) |
+
 ## Как запустить локально
 
 1. Скачайте репозиторий
